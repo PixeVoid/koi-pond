@@ -286,8 +286,19 @@ export const PondCanvas: React.FC<PondCanvasProps> = ({ settings, onStatsUpdate 
 
         const canvas = canvasRef.current;
         if (canvas) {
-          canvas.width = width;
-          canvas.height = height;
+          // HIGH-DPI / RETINA SUPPORT: Scale canvas by devicePixelRatio
+          // so it stays sharp when zooming in or on high-DPI screens.
+          // The CSS size stays the same, but the backing buffer has more pixels.
+          const dpr = window.devicePixelRatio || 1;
+          canvas.width = width * dpr;
+          canvas.height = height * dpr;
+          canvas.style.width = `${width}px`;
+          canvas.style.height = `${height}px`;
+
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          }
         }
 
         // Fish are already loaded from localStorage during component initialization (lazy init).
@@ -577,6 +588,10 @@ export const PondCanvas: React.FC<PondCanvasProps> = ({ settings, onStatsUpdate 
     const updateAndRender = () => {
       timeRef.current += 1;
       const { width, height } = dimensionsRef.current;
+
+      // Re-apply DPR scaling at the start of each frame to keep rendering crisp
+      const dpr = window.devicePixelRatio || 1;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       // 1. Draw Japanese Zen Pond theme water gradients
       drawPondBackground(ctx, width, height);
@@ -1806,11 +1821,17 @@ export const PondCanvas: React.FC<PondCanvasProps> = ({ settings, onStatsUpdate 
   const getBodyWidthCurve = (idx: number, total: number): number => {
     const t = idx / (total - 1);
     if (t < 0.12) {
-      return 3.5 + (t / 0.12) * 5.5;
-    } else if (t < 0.3) {
-      return 9.0;
+      // Smooth nose taper — use cubic easing instead of linear for a rounded snout
+      const noseT = t / 0.12;
+      return 3.5 + (noseT * noseT) * 5.5; // quadratic ease-in for rounded head
+    } else if (t < 0.35) {
+      // Broad head/shoulder region — smooth transition from nose to max width
+      const shoulderT = (t - 0.12) / 0.23;
+      return 9.0 + Math.sin(shoulderT * Math.PI) * 0.8; // gentle bulge
     } else {
-      return 9.0 * (1.0 - (t - 0.3) / 0.7) * 0.85 + 1.2;
+      // Smooth taper from max width to tail
+      const tailT = (t - 0.35) / 0.65;
+      return 9.0 * (1.0 - tailT * tailT) * 0.85 + 1.2; // quadratic ease for smoother tail taper
     }
   };
 
@@ -1824,11 +1845,17 @@ export const PondCanvas: React.FC<PondCanvasProps> = ({ settings, onStatsUpdate 
 
     for (let i = 0; i < total; i++) {
       const node = list[i];
-      let segmentAngle = fish.angle;
+      let segmentAngle: number;
 
-      if (i > 0) {
+      if (i === 0 && total > 1) {
+        // Head: use direction from head to next vertebra for consistent outline
+        const next = list[1];
+        segmentAngle = Math.atan2(next.y - node.y, next.x - node.x);
+      } else if (i > 0) {
         const prev = list[i - 1];
         segmentAngle = Math.atan2(node.y - prev.y, node.x - prev.x) + Math.PI;
+      } else {
+        segmentAngle = fish.angle;
       }
 
       const w = getBodyWidthCurve(i, total) * fish.sizeMultiplier * (isShadow ? 1.05 : 1.0);
@@ -1843,13 +1870,32 @@ export const PondCanvas: React.FC<PondCanvasProps> = ({ settings, onStatsUpdate 
       });
     }
 
+    // Draw smooth body outline using quadratic curves instead of straight lines
+    // This eliminates the head triangle/notch issue and creates a beautiful organic silhouette
+    if (left.length < 2) return;
+
     ctx.moveTo(left[0].x, left[0].y);
     for (let i = 1; i < left.length; i++) {
-      ctx.lineTo(left[i].x, left[i].y);
+      const prev = left[i - 1];
+      const curr = left[i];
+      const mx = (prev.x + curr.x) / 2;
+      const my = (prev.y + curr.y) / 2;
+      ctx.quadraticCurveTo(prev.x, prev.y, mx, my);
     }
+    ctx.lineTo(left[left.length - 1].x, left[left.length - 1].y);
+
     for (let i = 0; i < right.length; i++) {
-      ctx.lineTo(right[i].x, right[i].y);
+      if (i === 0) {
+        ctx.lineTo(right[i].x, right[i].y);
+      } else {
+        const prev = right[i - 1];
+        const curr = right[i];
+        const mx = (prev.x + curr.x) / 2;
+        const my = (prev.y + curr.y) / 2;
+        ctx.quadraticCurveTo(prev.x, prev.y, mx, my);
+      }
     }
+    ctx.lineTo(right[right.length - 1].x, right[right.length - 1].y);
     ctx.closePath();
   };
 
