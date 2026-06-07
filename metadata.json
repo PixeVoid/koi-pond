@@ -1,0 +1,6 @@
+{
+  "name": "Koi Pond",
+  "description": "An interactive, serene visual simulation of a traditional Japanese koi pond featuring realistic fluid swimming physics, ripple interactions, and custom feeding mechanics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
