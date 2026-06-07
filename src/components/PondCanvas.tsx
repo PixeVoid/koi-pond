@@ -1820,18 +1820,22 @@ export const PondCanvas: React.FC<PondCanvasProps> = ({ settings, onStatsUpdate 
 
   const getBodyWidthCurve = (idx: number, total: number): number => {
     const t = idx / (total - 1);
-    if (t < 0.12) {
-      // Smooth nose taper — use cubic easing instead of linear for a rounded snout
-      const noseT = t / 0.12;
-      return 3.5 + (noseT * noseT) * 5.5; // quadratic ease-in for rounded head
+    if (t < 0.06) {
+      // Ultra-smooth rounded snout tip — very gentle taper
+      const noseT = t / 0.06;
+      return 2.0 + (noseT * noseT * noseT) * 5.0; // cubic ease-in for very rounded nose
+    } else if (t < 0.15) {
+      // Nose-to-cheek transition — smooth widening
+      const cheekT = (t - 0.06) / 0.09;
+      return 7.0 + cheekT * 2.8; // linear but gentle
     } else if (t < 0.35) {
-      // Broad head/shoulder region — smooth transition from nose to max width
-      const shoulderT = (t - 0.12) / 0.23;
-      return 9.0 + Math.sin(shoulderT * Math.PI) * 0.8; // gentle bulge
+      // Broad head/shoulder region — smooth gentle bulge
+      const shoulderT = (t - 0.15) / 0.20;
+      return 9.8 + Math.sin(shoulderT * Math.PI) * 0.6; // subtle bulge
     } else {
-      // Smooth taper from max width to tail
+      // Smooth taper from max width to tail — quadratic ease
       const tailT = (t - 0.35) / 0.65;
-      return 9.0 * (1.0 - tailT * tailT) * 0.85 + 1.2; // quadratic ease for smoother tail taper
+      return 9.8 * (1.0 - tailT * tailT) * 0.85 + 1.2;
     }
   };
 
@@ -2256,35 +2260,61 @@ export const PondCanvas: React.FC<PondCanvasProps> = ({ settings, onStatsUpdate 
     const anchorNode = list[1]; 
     const segmentAngle = Math.atan2(list[2].y - list[0].y, list[2].x - list[0].x) + Math.PI;
 
-    // Head barbels (whiskers) - extremely authentic and elegant!
+    // Head barbels (whiskers) — authentic koi barbels that follow the spine direction!
+    // Barbels originate from the CHIN (below the snout), point forward and slightly downward,
+    // and sway naturally with the fish's movement.
     const head = list[0];
-    const barbelLen = 14 * fish.sizeMultiplier;
+
+    // Use actual spine direction (not fish.angle) so barbels follow the head orientation
+    const headAngle = list.length > 1
+      ? Math.atan2(list[1].y - head.y, list[1].x - head.x) + Math.PI
+      : fish.angle + Math.PI;
+
+    // Mouth position: slightly ahead of the head vertebra, along the head direction
+    const mouthOffset = 3.0 * fish.sizeMultiplier;
+    const mouthX = head.x + Math.cos(headAngle - Math.PI) * mouthOffset;
+    const mouthY = head.y + Math.sin(headAngle - Math.PI) * mouthOffset;
+
+    // Barbel anchor points: below the mouth on each side of the chin
+    const chinOffset = 2.2 * fish.sizeMultiplier;
+    const leftChinX = mouthX + Math.cos(headAngle + Math.PI / 2) * chinOffset;
+    const leftChinY = mouthY + Math.sin(headAngle + Math.PI / 2) * chinOffset;
+    const rightChinX = mouthX + Math.cos(headAngle - Math.PI / 2) * chinOffset;
+    const rightChinY = mouthY + Math.sin(headAngle - Math.PI / 2) * chinOffset;
+
+    const barbelLen = 12 * fish.sizeMultiplier;
     ctx.save();
     ctx.strokeStyle = fish.color;
-    ctx.lineWidth = 0.55 * fish.sizeMultiplier + 0.4;
-    ctx.globalAlpha = 0.77;
-    
-    // Left barbel swaying beautifully
+    ctx.lineWidth = 0.6 * fish.sizeMultiplier + 0.3;
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.7;
+
+    // Natural sway phase — subtle independent oscillation per barbel
+    const swayPhase = fish.wiggleCycle * 1.2;
+    const swayLeft = Math.sin(swayPhase) * 0.12;
+    const swayRight = Math.sin(swayPhase + 1.2) * 0.12; // offset phase for asymmetry
+
+    // Left barbel: points forward and slightly outward-downward from left chin
+    const leftBarbelBaseAngle = headAngle - Math.PI + Math.PI * 0.25 + swayLeft;
     ctx.beginPath();
-    ctx.moveTo(head.x, head.y);
-    const bAngleL = fish.angle + Math.PI * 0.95 + Math.sin(fish.wiggleCycle * 1.4) * 0.16;
+    ctx.moveTo(leftChinX, leftChinY);
     ctx.quadraticCurveTo(
-      head.x + Math.cos(bAngleL - 0.25) * barbelLen * 0.55,
-      head.y + Math.sin(bAngleL - 0.25) * barbelLen * 0.55,
-      head.x + Math.cos(bAngleL) * barbelLen,
-      head.y + Math.sin(bAngleL) * barbelLen
+      leftChinX + Math.cos(leftBarbelBaseAngle + 0.15) * barbelLen * 0.5,
+      leftChinY + Math.sin(leftBarbelBaseAngle + 0.15) * barbelLen * 0.5,
+      leftChinX + Math.cos(leftBarbelBaseAngle) * barbelLen,
+      leftChinY + Math.sin(leftBarbelBaseAngle) * barbelLen
     );
     ctx.stroke();
 
-    // Right barbel swaying beautifully
+    // Right barbel: points forward and slightly outward-downward from right chin
+    const rightBarbelBaseAngle = headAngle - Math.PI - Math.PI * 0.25 + swayRight;
     ctx.beginPath();
-    ctx.moveTo(head.x, head.y);
-    const bAngleR = fish.angle - Math.PI * 0.95 - Math.sin(fish.wiggleCycle * 1.4) * 0.16;
+    ctx.moveTo(rightChinX, rightChinY);
     ctx.quadraticCurveTo(
-      head.x + Math.cos(bAngleR + 0.25) * barbelLen * 0.55,
-      head.y + Math.sin(bAngleR + 0.25) * barbelLen * 0.55,
-      head.x + Math.cos(bAngleR) * barbelLen,
-      head.y + Math.sin(bAngleR) * barbelLen
+      rightChinX + Math.cos(rightBarbelBaseAngle - 0.15) * barbelLen * 0.5,
+      rightChinY + Math.sin(rightBarbelBaseAngle - 0.15) * barbelLen * 0.5,
+      rightChinX + Math.cos(rightBarbelBaseAngle) * barbelLen,
+      rightChinY + Math.sin(rightBarbelBaseAngle) * barbelLen
     );
     ctx.stroke();
     ctx.restore();
